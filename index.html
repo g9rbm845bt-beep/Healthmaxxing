@@ -72,6 +72,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Healthmaxxing">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div class="wrap">
@@ -79,6 +80,15 @@
     <h1>Health<span>maxxing</span> — Cut Tracker</h1>
     <div class="sub" id="todayLabel"></div>
   </header>
+  <div class="panel" id="syncBar" style="margin:0 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span id="syncDot" style="width:9px;height:9px;border-radius:50%;background:#8b97a6;flex:none"></span>
+    <span id="syncText" style="font-size:13px;color:var(--muted)">Sync laden…</span>
+    <span id="syncForm" style="display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+      <input type="email" id="syncEmail" placeholder="jouw@email.nl" style="min-width:180px">
+      <button class="btn" id="syncLogin" type="button">Stuur login-link</button>
+    </span>
+    <button class="btn sec" id="syncLogout" type="button" style="display:none;margin-left:auto">Uitloggen</button>
+  </div>
 
   <h2>Voortgang richting doel</h2>
   <div class="cards" id="goalCards"></div>
@@ -160,12 +170,14 @@ const SEED = {
 const LS_KEY = 'healthmaxxing_tracker_v1';
 
 let state = load();
+let currentUser=null, applyingRemote=false, pushTimer=null, realtimeOn=false;
 
 function load(){
   try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s=JSON.parse(raw); if(s.entries) return s; } }catch(e){}
   return structuredClone(SEED);
 }
-function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); if(currentUser && !applyingRemote) schedulePush(); }
+function commit(){ state.updatedAt = Date.now(); render(); }
 
 // ---- helpers ----
 const fmt = (n,d=1)=> (n==null||isNaN(n))?'—':Number(n).toLocaleString('nl-NL',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -337,14 +349,14 @@ document.getElementById('addForm').addEventListener('submit', ev=>{
   if(i>=0) state.entries[i]=entry; else state.entries.push(entry);
   ev.target.reset(); saveBtn.textContent='Opslaan';
   formMsg.textContent='Opgeslagen ✓ ('+date+')'; setTimeout(()=>formMsg.textContent='',2500);
-  render();
+  commit();
 });
 
 ['s_goal','s_kcal','s_protein','s_rate','s_tdee','s_height'].forEach(id=>{
   document.getElementById(id).addEventListener('change', e=>{
     const map={s_goal:'goal',s_kcal:'kcal',s_protein:'protein',s_rate:'rate',s_tdee:'tdee',s_height:'height'};
     state.settings[map[id]] = Number(String(e.target.value).replace(',','.'));
-    render();
+    commit();
   });
 });
 
@@ -356,9 +368,9 @@ exportCsv.onclick=()=>{
 };
 importBtn.onclick=()=>importFile.click();
 importFile.onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
-  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.entries) throw 0; state=s; render(); ioMsg.textContent='Geïmporteerd ✓'; }catch(_){ ioMsg.textContent='Ongeldig JSON-bestand.'; } };
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.entries) throw 0; state=s; commit(); ioMsg.textContent='Geïmporteerd ✓'; }catch(_){ ioMsg.textContent='Ongeldig JSON-bestand.'; } };
   r.readAsText(f); };
-resetBtn.onclick=()=>{ if(confirm('Alles terugzetten naar de startdata? Je huidige invoer gaat verloren (maak eerst een backup).')){ state=structuredClone(SEED); render(); ioMsg.textContent='Teruggezet naar startdata.'; } };
+resetBtn.onclick=()=>{ if(confirm('Alles terugzetten naar de startdata? Je huidige invoer gaat verloren (maak eerst een backup).')){ state=structuredClone(SEED); commit(); ioMsg.textContent='Teruggezet naar startdata.'; } };
 
 function download(name,content,type){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b);
   const a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
@@ -367,6 +379,72 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
 (function firstRun(){ if(!state.entries.length){ const b=document.createElement('div'); b.className='panel'; b.style.cssText='border-color:#2f81f7;margin:0 0 14px'; b.innerHTML='\uD83D\uDC4B Nog geen data. Voer hieronder je eerste dag in, of klik onderaan op <b>\u2B06 Importeer JSON</b> om je backup te laden.'; const w=document.querySelector('.wrap'); w.insertBefore(b, w.querySelector('header').nextSibling); } })();
 f_date.value = todayStr();
 render();
+
+/* ===== Supabase cloud-sync ===== */
+const SB_URL='https://hubpwkyaucmsvkazksie.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1YnB3a3lhdWNtc3ZrYXprc2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0ODU2OTMsImV4cCI6MjA5ODA2MTY5M30.MCF7gKbu7X5J60s36sCF-vcKi255du4H5sZC7k1qjVA';
+let sb = (window.supabase)? window.supabase.createClient(SB_URL, SB_KEY) : null;
+
+function setSync(st){
+  const dot=document.getElementById('syncDot'), txt=document.getElementById('syncText');
+  const map={ off:['#8b97a6','Sync uit — log in om te synchroniseren'],
+    sent:['#d29922','✉ Check je mail en klik de login-link'],
+    syncing:['#58a6ff','Synchroniseren…'],
+    ok:['#3fb950','✓ Gesynct'+(currentUser?(' · '+currentUser.email):'')],
+    error:['#f85149','Sync-fout — controleer je verbinding'],
+    loading:['#8b97a6','Sync laden…'] };
+  const m=map[st]||map.loading; if(dot)dot.style.background=m[0]; if(txt)txt.textContent=m[1];
+}
+function showLoggedIn(yes){
+  const f=document.getElementById('syncForm'), o=document.getElementById('syncLogout');
+  if(f)f.style.display=yes?'none':'flex'; if(o)o.style.display=yes?'inline-block':'none';
+}
+async function pushRemote(){
+  if(!sb||!currentUser) return;
+  setSync('syncing');
+  const { error } = await sb.from('tracker_data').upsert({ user_id: currentUser.id, data: state, updated_at: new Date(state.updatedAt||Date.now()).toISOString() });
+  setSync(error?'error':'ok');
+}
+function schedulePush(){ clearTimeout(pushTimer); pushTimer=setTimeout(pushRemote, 800); }
+async function pullRemote(){
+  if(!sb||!currentUser) return;
+  const { data, error } = await sb.from('tracker_data').select('data,updated_at').eq('user_id', currentUser.id).maybeSingle();
+  if(error){ setSync('error'); return; }
+  if(!data){ await pushRemote(); return; }
+  const remote = data.data||{};
+  const rT = remote.updatedAt || Date.parse(data.updated_at) || 0;
+  const lT = state.updatedAt || 0;
+  if(rT>lT && remote.entries){ applyingRemote=true; state=remote; render(); applyingRemote=false; setSync('ok'); }
+  else if(lT>rT){ await pushRemote(); }
+  else setSync('ok');
+}
+function subscribeRealtime(){
+  if(!sb||!currentUser||realtimeOn) return; realtimeOn=true;
+  sb.channel('tr_'+currentUser.id).on('postgres_changes', {event:'*',schema:'public',table:'tracker_data',filter:'user_id=eq.'+currentUser.id}, payload=>{
+    const remote = payload.new && payload.new.data; if(!remote||!remote.entries) return;
+    const rT=remote.updatedAt||0, lT=state.updatedAt||0;
+    if(rT>lT){ applyingRemote=true; state=remote; render(); applyingRemote=false; setSync('ok'); }
+  }).subscribe();
+}
+function onAuth(session){
+  currentUser = session? session.user : null;
+  showLoggedIn(!!currentUser);
+  if(currentUser){ setSync('syncing'); pullRemote().then(subscribeRealtime); }
+  else setSync('off');
+}
+if(sb){
+  const lg=document.getElementById('syncLogin'), lo=document.getElementById('syncLogout');
+  if(lg) lg.onclick = async ()=>{
+    const email=(document.getElementById('syncEmail').value||'').trim();
+    if(!email){ setSync('off'); return; }
+    setSync('syncing');
+    const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.href.split('#')[0] } });
+    setSync(error?'error':'sent');
+  };
+  if(lo) lo.onclick = async ()=>{ await sb.auth.signOut(); realtimeOn=false; onAuth(null); };
+  sb.auth.onAuthStateChange((evt, session)=>{ onAuth(session); });
+  sb.auth.getSession().then(({data})=>{ if(!currentUser) onAuth(data.session); });
+} else { setSync('error'); }
 </script>
 </body>
 </html>
