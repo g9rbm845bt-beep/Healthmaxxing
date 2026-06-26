@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Healthmaxxing — Cut Tracker</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a323d;
+    --text:#e6edf3; --muted:#8b97a6; --accent:#3fb950; --accent2:#58a6ff;
+    --warn:#d29922; --bad:#f85149; --good:#3fb950;
+    --radius:14px; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.45;}
+  .wrap{max-width:1050px;margin:0 auto;padding:24px 18px 80px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+  h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:28px 0 10px;font-weight:600}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+  .card .label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .card .val{font-size:26px;font-weight:700;margin-top:4px}
+  .card .val small{font-size:13px;color:var(--muted);font-weight:500}
+  .card .note{font-size:11px;color:var(--muted);margin-top:3px}
+  .val.green{color:var(--good)} .val.amber{color:var(--warn)} .val.red{color:var(--bad)} .val.blue{color:var(--accent2)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .chartwrap{overflow:hidden}
+  svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  form.add{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;align-items:end}
+  label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 10px;font-size:14px;font-family:var(--font)}
+  input:focus,select:focus{outline:2px solid var(--accent2);border-color:transparent}
+  button{cursor:pointer;border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;font-family:var(--font)}
+  .btn{background:var(--accent);color:#04140a}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  .btn.ghost{background:transparent;color:var(--muted);padding:6px 10px}
+  .btn.ghost:hover{color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th,td{padding:8px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child,th.l,td.l{text-align:left}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;background:var(--panel)}
+  tr:hover td{background:var(--panel2)}
+  tr.today td{background:rgba(63,185,80,.07)}
+  .tag{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600}
+  .tag.j{background:rgba(63,185,80,.15);color:var(--good)}
+  .tag.n{background:rgba(210,153,34,.15);color:var(--warn)}
+  td .mini{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:3px 7px;font-size:12px;cursor:pointer}
+  td .mini:hover{color:var(--text)}
+  .tablescroll{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:var(--radius)}
+  details.settings{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:0 16px;margin-top:14px}
+  details.settings summary{cursor:pointer;padding:14px 0;font-weight:600;font-size:14px;list-style:none}
+  details.settings summary::-webkit-details-marker{display:none}
+  details.settings summary::before{content:"⚙  "}
+  .settgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding-bottom:16px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .msg{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
+  .progress{height:10px;background:var(--panel2);border-radius:20px;overflow:hidden;margin-top:10px;border:1px solid var(--line)}
+  .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:20px}
+  .foot{color:var(--muted);font-size:12px;margin-top:30px;text-align:center}
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0e1116">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Healthmaxxing">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Health<span>maxxing</span> — Cut Tracker</h1>
+    <div class="sub" id="todayLabel"></div>
+  </header>
+
+  <h2>Voortgang richting doel</h2>
+  <div class="cards" id="goalCards"></div>
+  <div class="panel" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;font-size:13px"><span id="progStart"></span><span id="progGoal"></span></div>
+    <div class="progress"><i id="progBar"></i></div>
+    <div class="msg" id="progMsg"></div>
+  </div>
+
+  <h2>Dagelijkse cijfers</h2>
+  <div class="cards" id="statCards"></div>
+
+  <h2>Gewichtsverloop</h2>
+  <div class="panel chartwrap">
+    <div id="chart"></div>
+    <div class="legend">
+      <span><i style="background:#3a4757"></i>Dagelijks gewicht</span>
+      <span><i style="background:var(--accent2)"></i>7-daags gemiddelde</span>
+      <span><i style="background:var(--accent)"></i>Doel (<span id="legGoal"></span> kg)</span>
+    </div>
+  </div>
+
+  <h2>Dag invoeren / bijwerken</h2>
+  <div class="panel">
+    <form class="add" id="addForm" autocomplete="off">
+      <label class="f">Datum<input type="date" id="f_date" required></label>
+      <label class="f">Gewicht (kg)<input type="number" step="0.1" id="f_weight" placeholder="bijv. 86,3" inputmode="decimal"></label>
+      <label class="f">Kcal<input type="number" step="1" id="f_kcal" placeholder="bijv. 2000"></label>
+      <label class="f">Kcal betrouwbaar?
+        <select id="f_reliable"><option value="j">ja — afgewogen</option><option value="n">nee — schatting</option></select></label>
+      <label class="f">Eiwit (g)<input type="number" step="1" id="f_protein" placeholder="optioneel"></label>
+      <label class="f" style="grid-column:1/-1">Notitie<input type="text" id="f_notes" placeholder="optioneel"></label>
+      <button class="btn" type="submit" id="saveBtn">Opslaan</button>
+    </form>
+    <div class="msg" id="formMsg"></div>
+  </div>
+
+  <h2>Alle dagen</h2>
+  <div class="tablescroll">
+    <table id="dataTable">
+      <thead><tr>
+        <th class="l">Datum</th><th>Gewicht</th><th>7-d gem.</th><th>Kcal</th><th>Betr.</th><th>Eiwit</th><th class="l">Notitie</th><th></th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <details class="settings">
+    <summary>Instellingen & doelen</summary>
+    <div class="settgrid">
+      <label class="f">Doelgewicht (kg)<input type="number" step="0.1" id="s_goal"></label>
+      <label class="f">Kcal-doel/dag<input type="number" step="10" id="s_kcal"></label>
+      <label class="f">Eiwit-doel (g)<input type="number" step="5" id="s_protein"></label>
+      <label class="f">Cut-tempo (kg/week)<input type="number" step="0.05" id="s_rate"></label>
+      <label class="f">Geschat onderhoud (kcal)<input type="number" step="10" id="s_tdee"></label>
+      <label class="f">Lengte (cm)<input type="number" step="1" id="s_height"></label>
+    </div>
+  </details>
+
+  <div class="toolbar">
+    <button class="btn sec" id="exportJson">⬇ Backup (JSON)</button>
+    <button class="btn sec" id="exportCsv">⬇ Export CSV</button>
+    <button class="btn sec" id="importBtn">⬆ Importeer JSON</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
+    <button class="btn ghost" id="resetBtn">Reset naar startdata</button>
+  </div>
+  <div class="msg" id="ioMsg"></div>
+
+  <p class="foot">Lokaal opgeslagen in je browser. Maak af en toe een JSON-backup in je Healthmaxxing-folder.<br>
+  Geen medisch advies — voor blessures/bloedwaarden/medicatie: raadpleeg een professional.</p>
+</div>
+
+<script>
+const KCAL_PER_KG = 7700;
+const SEED = {
+  settings:{ goal:81, kcal:2000, protein:150, rate:0.85, tdee:2850, height:179 },
+  entries:[]
+};
+const LS_KEY = 'healthmaxxing_tracker_v1';
+
+let state = load();
+
+function load(){
+  try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s=JSON.parse(raw); if(s.entries) return s; } }catch(e){}
+  return structuredClone(SEED);
+}
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+// ---- helpers ----
+const fmt = (n,d=1)=> (n==null||isNaN(n))?'—':Number(n).toLocaleString('nl-NL',{minimumFractionDigits:d,maximumFractionDigits:d});
+const toDate = s => new Date(s+'T00:00:00');
+const dayNum = s => toDate(s).getTime()/86400000;
+const sorted = ()=> [...state.entries].sort((a,b)=> a.date<b.date?-1:1);
+const todayStr = ()=>{ const d=new Date(); return d.toISOString().slice(0,10); };
+
+function sevenDayAvg(dateStr){
+  const end = dayNum(dateStr);
+  const ws = state.entries.filter(e=> e.weight!=null && dayNum(e.date)<=end && dayNum(e.date)>end-7).map(e=>e.weight);
+  if(!ws.length) return null;
+  return ws.reduce((a,b)=>a+b,0)/ws.length;
+}
+function regression(){
+  const pts = state.entries.filter(e=>e.weight!=null).map(e=>({x:dayNum(e.date),y:e.weight}));
+  if(pts.length<2) return null;
+  const n=pts.length, mx=pts.reduce((a,p)=>a+p.x,0)/n, my=pts.reduce((a,p)=>a+p.y,0)/n;
+  let num=0,den=0; pts.forEach(p=>{num+=(p.x-mx)*(p.y-my); den+=(p.x-mx)**2;});
+  if(den===0) return null;
+  return num/den; // kg per dag
+}
+function reliableIntake(){
+  const k = state.entries.filter(e=> e.reliable && e.kcal!=null).map(e=>e.kcal);
+  if(!k.length) return null;
+  return k.reduce((a,b)=>a+b,0)/k.length;
+}
+function latestWeightEntry(){
+  const w = sorted().filter(e=>e.weight!=null);
+  return w.length? w[w.length-1] : null;
+}
+
+// ---- render ----
+function render(){
+  save();
+  renderGoal(); renderStats(); renderChart(); renderTable(); renderSettings();
+  document.getElementById('todayLabel').textContent = 'Vandaag: ' + toDate(todayStr()).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('legGoal').textContent = fmt(state.settings.goal,0);
+}
+
+function renderGoal(){
+  const last = latestWeightEntry();
+  const cur7 = last? sevenDayAvg(last.date) : null;
+  const goal = state.settings.goal, rate = state.settings.rate;
+  const start = sorted().find(e=>e.weight!=null);
+  const startW = start? sevenDayAvg(start.date) : null;
+  const remaining = (cur7!=null)? cur7-goal : null;
+  const weeks = (remaining!=null && remaining>0 && rate>0)? remaining/rate : (remaining!=null && remaining<=0?0:null);
+  let eta='—';
+  if(weeks!=null){ const d=new Date(); d.setDate(d.getDate()+Math.round(weeks*7)); eta = weeks<=0?'bereikt 🎉':d.toLocaleDateString('nl-NL',{day:'numeric',month:'short'}); }
+
+  document.getElementById('goalCards').innerHTML = `
+    ${card('Huidig (7-d gem.)', fmt(cur7,1), 'kg', last?('op '+toDate(last.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'})):'', 'blue')}
+    ${card('Nog te gaan', fmt(remaining,1), 'kg', 'tot '+fmt(goal,0)+' kg', remaining<=0?'green':'')}
+    ${card('Tempo-doel', fmt(rate,2), 'kg/wk', '', '')}
+    ${card('Verwacht klaar', eta, '', weeks!=null&&weeks>0?('~'+fmt(weeks,0)+' weken'):'', 'green')}`;
+
+  if(startW!=null && cur7!=null){
+    const total = startW-goal, done = startW-cur7;
+    const pct = Math.max(0,Math.min(100, total>0? done/total*100:0));
+    document.getElementById('progBar').style.width = pct+'%';
+    document.getElementById('progStart').textContent = 'Start '+fmt(startW,1)+' kg';
+    document.getElementById('progGoal').textContent = 'Doel '+fmt(goal,0)+' kg';
+    document.getElementById('progMsg').textContent = `${fmt(done,1)} kg verloren · ${fmt(pct,0)}% van de cut · nog ${fmt(remaining,1)} kg`;
+  }
+}
+
+function renderStats(){
+  const slope = regression();
+  const wk = slope!=null? slope*7 : null;
+  const intake = reliableIntake();
+  const maintQuick = (intake!=null && slope!=null)? intake - slope*KCAL_PER_KG : null;
+  const target = state.settings.kcal;
+  const deficit = (state.settings.tdee && target)? state.settings.tdee-target : null;
+
+  let trendClass='', trendNote='';
+  if(wk!=null){
+    if(wk>-0.2){ trendClass='amber'; trendNote='~vlak — eet je op onderhoud?'; }
+    else if(wk<-1.2){ trendClass='red'; trendNote='snel — let op spierbehoud'; }
+    else { trendClass='green'; trendNote='mooi cut-tempo'; }
+  }
+  document.getElementById('statCards').innerHTML = `
+    ${card('Trend', fmt(wk,2), 'kg/wk', trendNote, trendClass)}
+    ${card('Gem. inname', fmt(intake,0), 'kcal', 'alleen betrouwbare dagen', 'blue')}
+    ${card('Kcal-doel', fmt(target,0), 'kcal', deficit!=null?('~'+fmt(deficit,0)+' tekort'):'', '')}
+    ${card('Eiwit-doel', fmt(state.settings.protein,0), 'g', '', '')}
+    ${card('Geschat onderhoud*', fmt(maintQuick,0), 'kcal', 'tijdens cut opgeblazen', 'amber')}`;
+}
+
+function card(label,val,unit,note,cls=''){
+  return `<div class="card"><div class="label">${label}</div>
+    <div class="val ${cls}">${val}${unit?` <small>${unit}</small>`:''}</div>
+    ${note?`<div class="note">${note}</div>`:''}</div>`;
+}
+
+function renderChart(){
+  const W=960,H=320,pad={t:18,r:16,b:34,l:40};
+  const data = sorted().filter(e=>e.weight!=null);
+  const el = document.getElementById('chart');
+  if(data.length<2){ el.innerHTML='<div style="color:var(--muted);padding:30px;text-align:center">Nog te weinig weegdata voor een grafiek.</div>'; return; }
+  const avg = data.map(e=>({x:dayNum(e.date),y:sevenDayAvg(e.date)}));
+  const goal = state.settings.goal;
+  const xs = data.map(e=>dayNum(e.date));
+  const ys = data.map(e=>e.weight).concat(avg.map(a=>a.y)).concat([goal]);
+  const xmin=Math.min(...xs), xmax=Math.max(...xs);
+  let ymin=Math.min(...ys), ymax=Math.max(...ys);
+  const padY=(ymax-ymin)*0.12||1; ymin-=padY; ymax+=padY;
+  const X=x=> pad.l+(x-xmin)/(xmax-xmin||1)*(W-pad.l-pad.r);
+  const Y=y=> pad.t+(ymax-y)/(ymax-ymin)*(H-pad.t-pad.b);
+  let g='';
+  // gridlines
+  const ticks=5;
+  for(let i=0;i<=ticks;i++){ const yv=ymin+(ymax-ymin)*i/ticks; const yy=Y(yv);
+    g+=`<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" stroke="#222a34"/>`;
+    g+=`<text x="${pad.l-6}" y="${yy+4}" fill="#8b97a6" font-size="11" text-anchor="end">${yv.toFixed(1)}</text>`; }
+  // x labels (first, mid, last)
+  [xmin,(xmin+xmax)/2,xmax].forEach(xv=>{ const d=new Date(xv*86400000);
+    g+=`<text x="${X(xv)}" y="${H-12}" fill="#8b97a6" font-size="11" text-anchor="middle">${d.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})}</text>`; });
+  // goal line
+  g+=`<line x1="${pad.l}" y1="${Y(goal)}" x2="${W-pad.r}" y2="${Y(goal)}" stroke="#3fb950" stroke-dasharray="5 4" stroke-width="1.5"/>`;
+  // 7d avg line
+  const avgPath = avg.map((a,i)=>`${i?'L':'M'}${X(a.x).toFixed(1)} ${Y(a.y).toFixed(1)}`).join(' ');
+  g+=`<path d="${avgPath}" fill="none" stroke="#58a6ff" stroke-width="2.5"/>`;
+  // raw dots
+  data.forEach(e=>{ g+=`<circle cx="${X(dayNum(e.date))}" cy="${Y(e.weight)}" r="3" fill="#3a4757"/>`; });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${g}</svg>`;
+}
+
+function renderTable(){
+  const tb = document.querySelector('#dataTable tbody');
+  const rows = sorted().reverse();
+  const today = todayStr();
+  tb.innerHTML = rows.map(e=>`
+    <tr class="${e.date===today?'today':''}">
+      <td class="l">${toDate(e.date).toLocaleDateString('nl-NL',{day:'2-digit',month:'short'})}</td>
+      <td>${e.weight!=null?fmt(e.weight,1):'—'}</td>
+      <td>${fmt(sevenDayAvg(e.date),2)}</td>
+      <td>${e.kcal!=null?fmt(e.kcal,0):'—'}</td>
+      <td>${e.kcal!=null?`<span class="tag ${e.reliable?'j':'n'}">${e.reliable?'j':'n'}</span>`:''}</td>
+      <td>${e.protein!=null?fmt(e.protein,0):'—'}</td>
+      <td class="l" style="white-space:normal;color:var(--muted);font-size:12px">${e.notes||''}</td>
+      <td><button class="mini" data-edit="${e.date}">✎</button></td>
+    </tr>`).join('');
+  tb.querySelectorAll('[data-edit]').forEach(b=> b.onclick=()=>editEntry(b.dataset.edit));
+}
+
+function renderSettings(){
+  const s=state.settings;
+  s_goal.value=s.goal; s_kcal.value=s.kcal; s_protein.value=s.protein;
+  s_rate.value=s.rate; s_tdee.value=s.tdee; s_height.value=s.height;
+}
+
+// ---- interactions ----
+function editEntry(date){
+  const e = state.entries.find(x=>x.date===date); if(!e) return;
+  f_date.value=e.date; f_weight.value=e.weight??''; f_kcal.value=e.kcal??'';
+  f_reliable.value=e.reliable?'j':'n'; f_protein.value=e.protein??''; f_notes.value=e.notes||'';
+  saveBtn.textContent='Bijwerken'; window.scrollTo({top:document.getElementById('addForm').offsetTop-120,behavior:'smooth'});
+  formMsg.textContent='Bezig met bewerken van '+date;
+}
+
+document.getElementById('addForm').addEventListener('submit', ev=>{
+  ev.preventDefault();
+  const num = v=> v===''?null:Number(String(v).replace(',','.'));
+  const date = f_date.value; if(!date){ formMsg.textContent='Kies een datum.'; return; }
+  const entry = { date, weight:num(f_weight.value), kcal:num(f_kcal.value),
+    reliable: f_reliable.value==='j', protein:num(f_protein.value), notes:f_notes.value.trim() };
+  const i = state.entries.findIndex(x=>x.date===date);
+  if(i>=0) state.entries[i]=entry; else state.entries.push(entry);
+  ev.target.reset(); saveBtn.textContent='Opslaan';
+  formMsg.textContent='Opgeslagen ✓ ('+date+')'; setTimeout(()=>formMsg.textContent='',2500);
+  render();
+});
+
+['s_goal','s_kcal','s_protein','s_rate','s_tdee','s_height'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', e=>{
+    const map={s_goal:'goal',s_kcal:'kcal',s_protein:'protein',s_rate:'rate',s_tdee:'tdee',s_height:'height'};
+    state.settings[map[id]] = Number(String(e.target.value).replace(',','.'));
+    render();
+  });
+});
+
+exportJson.onclick=()=>{ download('healthmaxxing_backup_'+todayStr()+'.json', JSON.stringify(state,null,2), 'application/json'); ioMsg.textContent='JSON-backup gedownload.'; };
+exportCsv.onclick=()=>{
+  const head='datum,gewicht_kg,kcal,kcal_betrouwbaar,eiwit_g,notitie';
+  const lines = sorted().map(e=>[e.date,e.weight??'',e.kcal??'',e.reliable?'j':'n',e.protein??'',(e.notes||'').replace(/[",]/g,' ')].join(','));
+  download('healthmaxxing_'+todayStr()+'.csv', [head,...lines].join('\n'), 'text/csv'); ioMsg.textContent='CSV gedownload.';
+};
+importBtn.onclick=()=>importFile.click();
+importFile.onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.entries) throw 0; state=s; render(); ioMsg.textContent='Geïmporteerd ✓'; }catch(_){ ioMsg.textContent='Ongeldig JSON-bestand.'; } };
+  r.readAsText(f); };
+resetBtn.onclick=()=>{ if(confirm('Alles terugzetten naar de startdata? Je huidige invoer gaat verloren (maak eerst een backup).')){ state=structuredClone(SEED); render(); ioMsg.textContent='Teruggezet naar startdata.'; } };
+
+function download(name,content,type){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
+
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+(function firstRun(){ if(!state.entries.length){ const b=document.createElement('div'); b.className='panel'; b.style.cssText='border-color:#2f81f7;margin:0 0 14px'; b.innerHTML='\uD83D\uDC4B Nog geen data. Voer hieronder je eerste dag in, of klik onderaan op <b>\u2B06 Importeer JSON</b> om je backup te laden.'; const w=document.querySelector('.wrap'); w.insertBefore(b, w.querySelector('header').nextSibling); } })();
+f_date.value = todayStr();
+render();
+</script>
+</body>
+</html>
