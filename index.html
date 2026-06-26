@@ -88,7 +88,11 @@
       <input type="password" id="syncPass" placeholder="wachtwoord" autocomplete="current-password" style="min-width:140px">
       <button class="btn" id="syncLogin" type="button">Inloggen</button>
     </span>
-    <button class="btn sec" id="syncLogout" type="button" style="display:none;margin-left:auto">Uitloggen</button>
+    <span id="syncAccount" style="display:none;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+      <input type="password" id="syncSetPass" placeholder="kies wachtwoord (min. 6)" autocomplete="new-password" style="min-width:180px">
+      <button class="btn" id="syncSetBtn" type="button">Wachtwoord instellen</button>
+      <button class="btn sec" id="syncLogout" type="button">Uitloggen</button>
+    </span>
   </div>
 
   <h2>Voortgang richting doel</h2>
@@ -397,8 +401,8 @@ function setSync(st){
   const m=map[st]||map.loading; if(dot)dot.style.background=m[0]; if(txt)txt.textContent=m[1];
 }
 function showLoggedIn(yes){
-  const f=document.getElementById('syncForm'), o=document.getElementById('syncLogout');
-  if(f)f.style.display=yes?'none':'flex'; if(o)o.style.display=yes?'inline-block':'none';
+  const f=document.getElementById('syncForm'), a=document.getElementById('syncAccount');
+  if(f)f.style.display=yes?'none':'flex'; if(a)a.style.display=yes?'flex':'none';
 }
 async function pushRemote(){
   if(!sb||!currentUser) return;
@@ -447,6 +451,16 @@ if(sb){
       if(up.error){ setSync('error'); return; } // bv. verkeerd wachtwoord bij bestaand account
     }
     // succes -> onAuthStateChange handelt af
+  };
+  const setBtn=document.getElementById('syncSetBtn'), setPass=document.getElementById('syncSetPass');
+  if(setBtn) setBtn.onclick = async ()=>{
+    const pw=(setPass.value||'');
+    if(pw.length<6){ setSync('error'); return; }
+    setSync('syncing');
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if(error){ setSync('error'); return; }
+    setPass.value='';
+    const t=document.getElementById('syncText'); if(t) t.textContent='✓ Wachtwoord ingesteld — log er nu mee in op je telefoon';
   };
   if(lo) lo.onclick = async ()=>{ await sb.auth.signOut(); realtimeOn=false; onAuth(null); };
   sb.auth.onAuthStateChange((evt, session)=>{ onAuth(session); });
