@@ -135,7 +135,7 @@
   <div class="tablescroll">
     <table id="dataTable">
       <thead><tr>
-        <th class="l">Datum</th><th>Gewicht</th><th>7-d gem.</th><th>Kcal</th><th>Betr.</th><th>Eiwit</th><th class="l">Notitie</th><th></th>
+        <th class="l">Datum</th><th>Gewicht</th><th>7-d gem.</th><th>Kcal</th><th>Betr.</th><th>Eiwit</th><th>Stappen</th><th class="l">Notitie</th><th></th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -176,6 +176,7 @@ const LS_KEY = 'healthmaxxing_tracker_v1';
 
 let state = load();
 let currentUser=null, applyingRemote=false, pushTimer=null, realtimeOn=false;
+let healthData={}, healthSubOn=false;
 
 function load(){
   try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s=JSON.parse(raw); if(s.entries) return s; } }catch(e){}
@@ -205,8 +206,21 @@ function regression(){
   if(den===0) return null;
   return num/den; // kg per dag
 }
+function allDays(){
+  const map={};
+  state.entries.forEach(e=>{ map[e.date]=Object.assign({steps:null,fromHealth:false}, e); });
+  Object.keys(healthData).forEach(d=>{
+    const h=healthData[d];
+    const row = map[d] || (map[d]={date:d, weight:null, kcal:null, reliable:false, protein:null, notes:'', steps:null});
+    if(h.kcal!=null){ row.kcal=h.kcal; row.reliable=true; }
+    if(h.protein!=null) row.protein=h.protein;
+    if(h.steps!=null) row.steps=h.steps;
+    row.fromHealth=true;
+  });
+  return Object.values(map).sort((a,b)=> a.date<b.date?-1:1);
+}
 function reliableIntake(){
-  const k = state.entries.filter(e=> e.reliable && e.kcal!=null).map(e=>e.kcal);
+  const k = allDays().filter(e=> e.reliable && e.kcal!=null).map(e=>e.kcal);
   if(!k.length) return null;
   return k.reduce((a,b)=>a+b,0)/k.length;
 }
@@ -313,16 +327,17 @@ function renderChart(){
 
 function renderTable(){
   const tb = document.querySelector('#dataTable tbody');
-  const rows = sorted().reverse();
+  const rows = allDays().reverse();
   const today = todayStr();
   tb.innerHTML = rows.map(e=>`
     <tr class="${e.date===today?'today':''}">
       <td class="l">${toDate(e.date).toLocaleDateString('nl-NL',{day:'2-digit',month:'short'})}</td>
       <td>${e.weight!=null?fmt(e.weight,1):'—'}</td>
       <td>${fmt(sevenDayAvg(e.date),2)}</td>
-      <td>${e.kcal!=null?fmt(e.kcal,0):'—'}</td>
+      <td>${e.kcal!=null?fmt(e.kcal,0)+(e.fromHealth?' <span title="uit Apple Health" style="opacity:.55">⌚</span>':''):'—'}</td>
       <td>${e.kcal!=null?`<span class="tag ${e.reliable?'j':'n'}">${e.reliable?'j':'n'}</span>`:''}</td>
       <td>${e.protein!=null?fmt(e.protein,0):'—'}</td>
+      <td>${e.steps!=null?fmt(e.steps,0):'—'}</td>
       <td class="l" style="white-space:normal;color:var(--muted);font-size:12px">${e.notes||''}</td>
       <td><button class="mini" data-edit="${e.date}">✎</button></td>
     </tr>`).join('');
@@ -337,7 +352,7 @@ function renderSettings(){
 
 // ---- interactions ----
 function editEntry(date){
-  const e = state.entries.find(x=>x.date===date); if(!e) return;
+  const e = state.entries.find(x=>x.date===date) || {date, weight:null, kcal:null, reliable:true, protein:null, notes:''};
   f_date.value=e.date; f_weight.value=e.weight??''; f_kcal.value=e.kcal??'';
   f_reliable.value=e.reliable?'j':'n'; f_protein.value=e.protein??''; f_notes.value=e.notes||'';
   saveBtn.textContent='Bijwerken'; window.scrollTo({top:document.getElementById('addForm').offsetTop-120,behavior:'smooth'});
@@ -365,10 +380,10 @@ document.getElementById('addForm').addEventListener('submit', ev=>{
   });
 });
 
-exportJson.onclick=()=>{ download('healthmaxxing_backup_'+todayStr()+'.json', JSON.stringify(state,null,2), 'application/json'); ioMsg.textContent='JSON-backup gedownload.'; };
+exportJson.onclick=()=>{ const snap=Object.assign({}, state, {entries: allDays()}); download('healthmaxxing_backup_'+todayStr()+'.json', JSON.stringify(snap,null,2), 'application/json'); ioMsg.textContent='JSON-backup gedownload.'; };
 exportCsv.onclick=()=>{
-  const head='datum,gewicht_kg,kcal,kcal_betrouwbaar,eiwit_g,notitie';
-  const lines = sorted().map(e=>[e.date,e.weight??'',e.kcal??'',e.reliable?'j':'n',e.protein??'',(e.notes||'').replace(/[",]/g,' ')].join(','));
+  const head='datum,gewicht_kg,kcal,kcal_betrouwbaar,eiwit_g,stappen,notitie';
+  const lines = allDays().map(e=>[e.date,e.weight??'',e.kcal??'',e.reliable?'j':'n',e.protein??'',e.steps??'',(e.notes||'').replace(/[",]/g,' ')].join(','));
   download('healthmaxxing_'+todayStr()+'.csv', [head,...lines].join('\n'), 'text/csv'); ioMsg.textContent='CSV gedownload.';
 };
 importBtn.onclick=()=>importFile.click();
@@ -431,11 +446,23 @@ function subscribeRealtime(){
     if(rT>lT){ applyingRemote=true; state=remote; render(); applyingRemote=false; setSync('ok'); }
   }).subscribe();
 }
+async function pullHealth(){
+  if(!sb||!currentUser) return;
+  const { data, error } = await sb.from('health_daily').select('date,kcal,protein,steps').eq('user_id', currentUser.id);
+  if(error) return;
+  healthData={};
+  (data||[]).forEach(r=>{ healthData[r.date]={kcal:r.kcal, protein:r.protein, steps:r.steps}; });
+  render();
+}
+function subscribeHealth(){
+  if(!sb||!currentUser||healthSubOn) return; healthSubOn=true;
+  sb.channel('hd_'+currentUser.id).on('postgres_changes', {event:'*',schema:'public',table:'health_daily',filter:'user_id=eq.'+currentUser.id}, ()=>{ pullHealth(); }).subscribe();
+}
 function onAuth(session){
   currentUser = session? session.user : null;
   showLoggedIn(!!currentUser);
-  if(currentUser){ setSync('syncing'); pullRemote().then(subscribeRealtime); }
-  else setSync('off');
+  if(currentUser){ setSync('syncing'); pullRemote().then(()=>{ subscribeRealtime(); pullHealth().then(subscribeHealth); }); }
+  else { healthData={}; healthSubOn=false; setSync('off'); }
 }
 if(sb){
   const lg=document.getElementById('syncLogin'), lo=document.getElementById('syncLogout');
