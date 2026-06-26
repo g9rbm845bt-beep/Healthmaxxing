@@ -1,5 +1,5 @@
 // Healthmaxxing PWA service worker — app-shell caching voor offline gebruik.
-const CACHE = 'healthmaxxing-v6';
+const CACHE = 'healthmaxxing-v8';
 const ASSETS = [
   './',
   './index.html',

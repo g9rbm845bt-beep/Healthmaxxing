@@ -125,6 +125,10 @@
       <label class="f">Kcal betrouwbaar?
         <select id="f_reliable"><option value="j">ja — afgewogen</option><option value="n">nee — schatting</option></select></label>
       <label class="f">Eiwit (g)<input type="number" step="1" id="f_protein" placeholder="optioneel"></label>
+      <label class="f">Koolh. (g)<input type="number" step="1" id="f_carbs" placeholder="optioneel"></label>
+      <label class="f">Vet (g)<input type="number" step="1" id="f_fat" placeholder="optioneel"></label>
+      <label class="f">Stappen<input type="number" step="1" id="f_steps" placeholder="optioneel"></label>
+      <label class="f">Gym (min)<input type="number" step="1" id="f_workout" placeholder="optioneel"></label>
       <label class="f" style="grid-column:1/-1">Notitie<input type="text" id="f_notes" placeholder="optioneel"></label>
       <button class="btn" type="submit" id="saveBtn">Opslaan</button>
     </form>
@@ -135,7 +139,7 @@
   <div class="tablescroll">
     <table id="dataTable">
       <thead><tr>
-        <th class="l">Datum</th><th>Gewicht</th><th>7-d gem.</th><th>Kcal</th><th>Betr.</th><th>Eiwit</th><th>Stappen</th><th class="l">Notitie</th><th></th>
+        <th class="l">Datum</th><th>Gewicht</th><th>7-d gem.</th><th>Kcal</th><th>Betr.</th><th>Eiwit</th><th>Koolh.</th><th>Vet</th><th>Stappen</th><th>Gym (min)</th><th class="l">Notitie</th><th></th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -208,14 +212,22 @@ function regression(){
 }
 function allDays(){
   const map={};
-  state.entries.forEach(e=>{ map[e.date]=Object.assign({steps:null,fromHealth:false}, e); });
+  // basis: Apple Health
   Object.keys(healthData).forEach(d=>{
     const h=healthData[d];
-    const row = map[d] || (map[d]={date:d, weight:null, kcal:null, reliable:false, protein:null, notes:'', steps:null});
-    if(h.kcal!=null){ row.kcal=h.kcal; row.reliable=true; }
-    if(h.protein!=null) row.protein=h.protein;
-    if(h.steps!=null) row.steps=h.steps;
-    row.fromHealth=true;
+    map[d]={date:d, weight:null, kcal:h.kcal??null, reliable:(h.kcal!=null), protein:h.protein??null, carbs:h.carbs??null, fat:h.fat??null, steps:h.steps??null, workout:h.workout??null, notes:'', fromHealth:(h.kcal!=null)};
+  });
+  // handmatige invoer gaat vóór Health (alleen ingevulde velden)
+  state.entries.forEach(e=>{
+    const row = map[e.date] || (map[e.date]={date:e.date, weight:null, kcal:null, reliable:false, protein:null, carbs:null, fat:null, steps:null, workout:null, notes:'', fromHealth:false});
+    if(e.weight!=null) row.weight=e.weight;
+    if(e.kcal!=null){ row.kcal=e.kcal; row.reliable=e.reliable; row.fromHealth=false; }
+    if(e.protein!=null) row.protein=e.protein;
+    if(e.carbs!=null) row.carbs=e.carbs;
+    if(e.fat!=null) row.fat=e.fat;
+    if(e.steps!=null) row.steps=e.steps;
+    if(e.workout!=null) row.workout=e.workout;
+    if(e.notes) row.notes=e.notes;
   });
   return Object.values(map).sort((a,b)=> a.date<b.date?-1:1);
 }
@@ -337,7 +349,10 @@ function renderTable(){
       <td>${e.kcal!=null?fmt(e.kcal,0)+(e.fromHealth?' <span title="uit Apple Health" style="opacity:.55">⌚</span>':''):'—'}</td>
       <td>${e.kcal!=null?`<span class="tag ${e.reliable?'j':'n'}">${e.reliable?'j':'n'}</span>`:''}</td>
       <td>${e.protein!=null?fmt(e.protein,0):'—'}</td>
+      <td>${e.carbs!=null?fmt(e.carbs,0):'—'}</td>
+      <td>${e.fat!=null?fmt(e.fat,0):'—'}</td>
       <td>${e.steps!=null?fmt(e.steps,0):'—'}</td>
+      <td>${e.workout!=null?fmt(e.workout,0):'—'}</td>
       <td class="l" style="white-space:normal;color:var(--muted);font-size:12px">${e.notes||''}</td>
       <td><button class="mini" data-edit="${e.date}">✎</button></td>
     </tr>`).join('');
@@ -352,11 +367,21 @@ function renderSettings(){
 
 // ---- interactions ----
 function editEntry(date){
-  const e = state.entries.find(x=>x.date===date) || {date, weight:null, kcal:null, reliable:true, protein:null, notes:''};
-  f_date.value=e.date; f_weight.value=e.weight??''; f_kcal.value=e.kcal??'';
-  f_reliable.value=e.reliable?'j':'n'; f_protein.value=e.protein??''; f_notes.value=e.notes||'';
+  const m = allDays().find(x=>x.date===date) || {};
+  const e = state.entries.find(x=>x.date===date) || {};
+  const hint=(v,def)=> v!=null?('Health: '+Math.round(v)):def;
+  f_date.value=date;
+  f_weight.value=e.weight??'';
+  f_kcal.value=e.kcal??''; f_kcal.placeholder=hint(m.kcal,'bijv. 2000');
+  f_reliable.value=(e.reliable===false?'n':'j');
+  f_protein.value=e.protein??''; f_protein.placeholder=hint(m.protein,'optioneel');
+  f_carbs.value=e.carbs??''; f_carbs.placeholder=hint(m.carbs,'optioneel');
+  f_fat.value=e.fat??''; f_fat.placeholder=hint(m.fat,'optioneel');
+  f_steps.value=e.steps??''; f_steps.placeholder=hint(m.steps,'optioneel');
+  f_workout.value=e.workout??''; f_workout.placeholder=hint(m.workout,'optioneel');
+  f_notes.value=e.notes||'';
   saveBtn.textContent='Bijwerken'; window.scrollTo({top:document.getElementById('addForm').offsetTop-120,behavior:'smooth'});
-  formMsg.textContent='Bezig met bewerken van '+date;
+  formMsg.textContent='Bewerken van '+date+' — laat een veld leeg om de Health-waarde te houden';
 }
 
 document.getElementById('addForm').addEventListener('submit', ev=>{
@@ -364,10 +389,11 @@ document.getElementById('addForm').addEventListener('submit', ev=>{
   const num = v=> v===''?null:Number(String(v).replace(',','.'));
   const date = f_date.value; if(!date){ formMsg.textContent='Kies een datum.'; return; }
   const entry = { date, weight:num(f_weight.value), kcal:num(f_kcal.value),
-    reliable: f_reliable.value==='j', protein:num(f_protein.value), notes:f_notes.value.trim() };
+    reliable: f_reliable.value==='j', protein:num(f_protein.value), carbs:num(f_carbs.value), fat:num(f_fat.value), steps:num(f_steps.value), workout:num(f_workout.value), notes:f_notes.value.trim() };
   const i = state.entries.findIndex(x=>x.date===date);
   if(i>=0) state.entries[i]=entry; else state.entries.push(entry);
   ev.target.reset(); saveBtn.textContent='Opslaan';
+  f_kcal.placeholder='bijv. 2000'; f_protein.placeholder='optioneel'; f_carbs.placeholder='optioneel'; f_fat.placeholder='optioneel'; f_steps.placeholder='optioneel'; f_workout.placeholder='optioneel';
   formMsg.textContent='Opgeslagen ✓ ('+date+')'; setTimeout(()=>formMsg.textContent='',2500);
   commit();
 });
@@ -382,8 +408,8 @@ document.getElementById('addForm').addEventListener('submit', ev=>{
 
 exportJson.onclick=()=>{ const snap=Object.assign({}, state, {entries: allDays()}); download('healthmaxxing_backup_'+todayStr()+'.json', JSON.stringify(snap,null,2), 'application/json'); ioMsg.textContent='JSON-backup gedownload.'; };
 exportCsv.onclick=()=>{
-  const head='datum,gewicht_kg,kcal,kcal_betrouwbaar,eiwit_g,stappen,notitie';
-  const lines = allDays().map(e=>[e.date,e.weight??'',e.kcal??'',e.reliable?'j':'n',e.protein??'',e.steps??'',(e.notes||'').replace(/[",]/g,' ')].join(','));
+  const head='datum,gewicht_kg,kcal,kcal_betrouwbaar,eiwit_g,koolhydraten_g,vet_g,stappen,gym_min,notitie';
+  const lines = allDays().map(e=>[e.date,e.weight??'',e.kcal??'',e.reliable?'j':'n',e.protein??'',e.carbs??'',e.fat??'',e.steps??'',e.workout??'',(e.notes||'').replace(/[",]/g,' ')].join(','));
   download('healthmaxxing_'+todayStr()+'.csv', [head,...lines].join('\n'), 'text/csv'); ioMsg.textContent='CSV gedownload.';
 };
 importBtn.onclick=()=>importFile.click();
@@ -448,10 +474,10 @@ function subscribeRealtime(){
 }
 async function pullHealth(){
   if(!sb||!currentUser) return;
-  const { data, error } = await sb.from('health_daily').select('date,kcal,protein,steps').eq('user_id', currentUser.id);
+  const { data, error } = await sb.from('health_daily').select('date,kcal,protein,carbs,fat,steps,workout_min').eq('user_id', currentUser.id);
   if(error) return;
   healthData={};
-  (data||[]).forEach(r=>{ healthData[r.date]={kcal:r.kcal, protein:r.protein, steps:r.steps}; });
+  (data||[]).forEach(r=>{ healthData[r.date]={kcal:r.kcal, protein:r.protein, carbs:r.carbs, fat:r.fat, steps:r.steps, workout:r.workout_min}; });
   render();
 }
 function subscribeHealth(){
