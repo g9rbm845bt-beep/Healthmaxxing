@@ -84,8 +84,9 @@
     <span id="syncDot" style="width:9px;height:9px;border-radius:50%;background:#8b97a6;flex:none"></span>
     <span id="syncText" style="font-size:13px;color:var(--muted)">Sync laden…</span>
     <span id="syncForm" style="display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
-      <input type="email" id="syncEmail" placeholder="jouw@email.nl" style="min-width:180px">
-      <button class="btn" id="syncLogin" type="button">Stuur login-link</button>
+      <input type="email" id="syncEmail" placeholder="e-mail" autocomplete="username" style="min-width:150px">
+      <input type="password" id="syncPass" placeholder="wachtwoord" autocomplete="current-password" style="min-width:140px">
+      <button class="btn" id="syncLogin" type="button">Inloggen</button>
     </span>
     <button class="btn sec" id="syncLogout" type="button" style="display:none;margin-left:auto">Uitloggen</button>
   </div>
@@ -383,12 +384,12 @@ render();
 /* ===== Supabase cloud-sync ===== */
 const SB_URL='https://hubpwkyaucmsvkazksie.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1YnB3a3lhdWNtc3ZrYXprc2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0ODU2OTMsImV4cCI6MjA5ODA2MTY5M30.MCF7gKbu7X5J60s36sCF-vcKi255du4H5sZC7k1qjVA';
-let sb = (window.supabase)? window.supabase.createClient(SB_URL, SB_KEY) : null;
+let sb = (window.supabase)? window.supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } }) : null;
 
 function setSync(st){
   const dot=document.getElementById('syncDot'), txt=document.getElementById('syncText');
   const map={ off:['#8b97a6','Sync uit — log in om te synchroniseren'],
-    sent:['#d29922','✉ Check je mail en klik de login-link'],
+    sent:['#d29922','✉ Code gemaild — vul de code hieronder in'],
     syncing:['#58a6ff','Synchroniseren…'],
     ok:['#3fb950','✓ Gesynct'+(currentUser?(' · '+currentUser.email):'')],
     error:['#f85149','Sync-fout — controleer je verbinding'],
@@ -436,10 +437,16 @@ if(sb){
   const lg=document.getElementById('syncLogin'), lo=document.getElementById('syncLogout');
   if(lg) lg.onclick = async ()=>{
     const email=(document.getElementById('syncEmail').value||'').trim();
-    if(!email){ setSync('off'); return; }
+    const pass=(document.getElementById('syncPass').value||'');
+    if(!email||!pass){ setSync('off'); return; }
     setSync('syncing');
-    const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.href.split('#')[0] } });
-    setSync(error?'error':'sent');
+    let { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if(error){
+      // bestaat nog niet? maak account aan (eerste keer)
+      const up = await sb.auth.signUp({ email, password: pass });
+      if(up.error){ setSync('error'); return; } // bv. verkeerd wachtwoord bij bestaand account
+    }
+    // succes -> onAuthStateChange handelt af
   };
   if(lo) lo.onclick = async ()=>{ await sb.auth.signOut(); realtimeOn=false; onAuth(null); };
   sb.auth.onAuthStateChange((evt, session)=>{ onAuth(session); });
